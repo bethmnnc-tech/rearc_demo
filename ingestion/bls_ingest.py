@@ -34,7 +34,7 @@ import sys
 import os
 
 # Ensure the ingestion directory is on sys.path for the import to work
-ingestion_dir = os.path.dirname(os.path.abspath(__file__)) if '__file__' in dir() else '/Workspace/Repos/beth_ramsey/data-quest/ingestion'
+ingestion_dir = os.path.dirname(os.path.abspath(__file__)) if '__file__' in dir() else '/Workspace/Repos/beth_ramsey/rearc_demo_test/ingestion'
 if ingestion_dir not in sys.path:
     sys.path.insert(0, ingestion_dir)
 

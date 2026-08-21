@@ -45,8 +45,9 @@ jobs:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_WORKSPACE_URL }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_PAT }}
         run: |
-          # --no-lock skips lock file checks for concurrent deployments
-          databricks bundle deploy -t dev --no-lock
+          # --auto-approve: skip interactive confirmation (required for CI/CD)
+          # --no-lock: skip lock file checks for concurrent deployments
+          databricks bundle deploy -t dev --auto-approve --no-lock
 
       - name: Deployment Summary
         if: success() && github.event_name == 'push'
