@@ -262,6 +262,7 @@ def bronze_population():
         .option("multiLine", "true")
         .option("cloudFiles.allowOverwrites", "true")
         .option("pathGlobFilter", "population_latest.json")
+        .option("cloudFiles.schemaHints", "data ARRAY<STRUCT<Year:STRING,Nation:STRING,Population:STRING,Slug_Nation:STRING,ID_Nation:STRING>>")
         .load(POPULATION_RAW_PATH)
     )
     return raw.select(F.explode("data").alias("record"), F.current_timestamp().alias("_ingested_at")).select(
