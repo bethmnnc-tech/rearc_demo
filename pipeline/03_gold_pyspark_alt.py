@@ -15,6 +15,7 @@ import dlt
 from pyspark.sql import functions as F
 from pyspark.sql import Window
 
+CATALOG = spark.conf.get("rdq.catalog", "rearc_dev_001")
 SILVER_SCHEMA = spark.conf.get("rdq.silver_schema", "silver")
 GOLD_SCHEMA = spark.conf.get("rdq.gold_schema", "gold")
 
@@ -27,12 +28,12 @@ GOLD_SCHEMA = spark.conf.get("rdq.gold_schema", "gold")
 # COMMAND ----------
 
 @dlt.table(
-    name=f"{GOLD_SCHEMA}.gold_population_stats_pyspark_alt",
+    name=f"{CATALOG}.{GOLD_SCHEMA}.gold_population_stats_pyspark_alt",
     comment="Q1 (alternate, PySpark): same result as gold_population_stats, via the DataFrame API.",
 )
 @dlt.expect_or_fail("has_all_six_years", "years_included = 6")
 def gold_population_stats_pyspark_alt():
-    df = dlt.read(f"{SILVER_SCHEMA}.silver_population").filter(F.col("year").between(2013, 2018))
+    df = dlt.read(f"{CATALOG}.{SILVER_SCHEMA}.silver_population").filter(F.col("year").between(2013, 2018))
     return df.select(
         F.lit(2013).alias("start_year"),
         F.lit(2018).alias("end_year"),
@@ -51,13 +52,13 @@ def gold_population_stats_pyspark_alt():
 # COMMAND ----------
 
 @dlt.table(
-    name=f"{GOLD_SCHEMA}.gold_bls_best_year_per_series_pyspark_alt",
+    name=f"{CATALOG}.{GOLD_SCHEMA}.gold_bls_best_year_per_series_pyspark_alt",
     comment="Q2 (alternate, PySpark): same result as gold_bls_best_year_per_series, via the DataFrame API.",
 )
 @dlt.expect_or_drop("has_series_id", "series_id IS NOT NULL")
 @dlt.expect_or_drop("has_best_year", "best_year IS NOT NULL")
 def gold_bls_best_year_per_series_pyspark_alt():
-    quarterly = dlt.read(f"{SILVER_SCHEMA}.silver_bls_data").filter(
+    quarterly = dlt.read(f"{CATALOG}.{SILVER_SCHEMA}.silver_bls_data").filter(
         F.col("period").isin("Q01", "Q02", "Q03", "Q04")
     )
 
@@ -67,7 +68,7 @@ def gold_bls_best_year_per_series_pyspark_alt():
     window = Window.partitionBy("series_id").orderBy(F.col("summed_value").desc(), F.col("year").asc())
     ranked = yearly_sums.withColumn("rn", F.row_number().over(window)).filter(F.col("rn") == 1)
 
-    series = dlt.read(f"{SILVER_SCHEMA}.silver_bls_series").select("series_id", "series_label")
+    series = dlt.read(f"{CATALOG}.{SILVER_SCHEMA}.silver_bls_series").select("series_id", "series_label")
 
     return (
         ranked.join(series, "series_id", "left")
@@ -91,14 +92,14 @@ def gold_bls_best_year_per_series_pyspark_alt():
 # COMMAND ----------
 
 @dlt.table(
-    name=f"{GOLD_SCHEMA}.gold_prs30006032_q01_population_pyspark_alt",
+    name=f"{CATALOG}.{GOLD_SCHEMA}.gold_prs30006032_q01_population_pyspark_alt",
     comment="Q3 (alternate, PySpark): same result as gold_prs30006032_q01_population, via the DataFrame API.",
 )
 @dlt.expect_or_drop("has_year", "year IS NOT NULL")
 def gold_prs30006032_q01_population_pyspark_alt():
-    data = dlt.read(f"{SILVER_SCHEMA}.silver_bls_data").filter(
+    data = dlt.read(f"{CATALOG}.{SILVER_SCHEMA}.silver_bls_data").filter(
         (F.col("series_id") == "PRS30006032") & (F.col("period") == "Q01")
     )
-    population = dlt.read(f"{SILVER_SCHEMA}.silver_population")
+    population = dlt.read(f"{CATALOG}.{SILVER_SCHEMA}.silver_population")
 
     return data.join(population, on="year", how="left").select("year", "value", "population").orderBy("year")

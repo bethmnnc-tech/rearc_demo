@@ -1,9 +1,13 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
 # MAGIC # Silver layer
 # MAGIC
 # MAGIC Typed, cleaned, deduplicated, and (for the series dimension) enriched with
-# MAGIC human-readable labels.
+# MAGIC legible labels.
 # MAGIC
 # MAGIC **Why materialized views (`dlt.read`, full recompute) instead of streaming
 # MAGIC here:** Bronze is where "don't reprocess files we've already ingested"
@@ -20,6 +24,10 @@
 import dlt
 from pyspark.sql import functions as F
 
+
+# COMMAND ----------
+
+CATALOG = spark.conf.get("rdq.catalog", "rearc_dev_001")
 BRONZE_SCHEMA = spark.conf.get("rdq.bronze_schema", "bronze")
 SILVER_SCHEMA = spark.conf.get("rdq.silver_schema", "silver")
 
@@ -36,11 +44,27 @@ SILVER_SCHEMA = spark.conf.get("rdq.silver_schema", "silver")
 
 # COMMAND ----------
 
-VALID_PERIOD_RE = r"^Q0[1-5]$"
+# MAGIC %md
+# MAGIC
+# MAGIC ### Data quality expectations
+# MAGIC
+# MAGIC The `silver_bls_data` table below enforces quality expectations through DLT's `@dlt.expect_or_drop()` decorator:
+# MAGIC
+# MAGIC - **`valid_series_id`**: Drops rows with null or empty series IDs
+# MAGIC - **`valid_year`**: Drops years outside the plausible range 1900–2100
+# MAGIC - **`valid_period`**: Drops period codes that don't match BLS's quarterly format (`Q01`–`Q05`)
+# MAGIC - **`has_value`**: Logs a warning (but keeps the row) when the observation value is null
+# MAGIC
+# MAGIC These rules ensure downstream Gold-layer consumers can safely join and aggregate without defensive null-handling.
+# MAGIC
+
+# COMMAND ----------
+
+VALID_PERIOD_RE = r"^Q0[1-5]$" #looking for valid Quarter Numbers - Q01-Q05 (Q05 is Full Year Summary)
 
 
 @dlt.table(
-    name=f"{SILVER_SCHEMA}.silver_bls_data",
+    name=f"{CATALOG}.{SILVER_SCHEMA}.silver_bls_data",
     comment="Cleaned/typed BLS productivity observations: one row per series_id/year/period.",
 )
 @dlt.expect_or_drop("valid_series_id", "series_id IS NOT NULL AND series_id != ''")
@@ -49,7 +73,7 @@ VALID_PERIOD_RE = r"^Q0[1-5]$"
 @dlt.expect("has_value", "value IS NOT NULL")
 def silver_bls_data():
     return (
-        dlt.read(f"{BRONZE_SCHEMA}.bronze_bls_data")
+        dlt.read(f"{CATALOG}.{BRONZE_SCHEMA}.bronze_bls_data")
         .select(
             F.trim(F.col("series_id")).alias("series_id"),
             F.col("year").cast("int").alias("year"),
@@ -65,30 +89,33 @@ def silver_bls_data():
 # MAGIC %md
 # MAGIC ## `silver_bls_series`
 # MAGIC
-# MAGIC Joins the series dimension against the sector/measure/duration/class/
-# MAGIC seasonal lookups to build a human-readable label per series -- `pr.series`
-# MAGIC on its own only has opaque numeric codes (`sector_code`, `measure_code`,
-# MAGIC `duration_code`, `class_code`...), not descriptive text. Per `pr.txt`
-# MAGIC (Section 6/7, the BLS-supplied field dictionary for this survey):
-# MAGIC `measure_code` is "the specific factor measured" (e.g. Unit labor costs),
-# MAGIC `duration_code` distinguishes "percent changes [or] indexes" (e.g. "%
-# MAGIC change year ago" vs. an index level) -- this materially changes how a
-# MAGIC `value` should be read, so it belongs in the label, not just the measure --
-# MAGIC and `class_code` identifies the "employee group to which data pertain."
-# MAGIC All four, plus seasonal adjustment status, go into the label.
+# MAGIC Joins series metadata with sector/measure/duration/class/seasonal lookups
+# MAGIC to create readable labels. The raw `pr.series` table only gives us numeric
+# MAGIC codes like `sector_code` and `measure_code` -- not much help when you're
+# MAGIC trying to figure out what a series actually tracks.
+# MAGIC
+# MAGIC According to the BLS field dictionary (`pr.txt`, sections 6/7):
+# MAGIC - `measure_code` tells you what's being measured (unit labor costs, etc.)
+# MAGIC - `duration_code` is critical because it tells you whether the value is a
+# MAGIC   percent change or an index level -- same number, completely different
+# MAGIC   meaning
+# MAGIC - `class_code` identifies which employee group the data covers
+# MAGIC
+# MAGIC We roll all four codes plus seasonal adjustment into one label so
+# MAGIC downstream users don't have to decode anything.
 # MAGIC
 
 # COMMAND ----------
 
 @dlt.table(
-    name=f"{SILVER_SCHEMA}.silver_bls_series",
-    comment="Series metadata enriched with a human-readable label, e.g. "
+    name=f"{CATALOG}.{SILVER_SCHEMA}.silver_bls_series",
+    comment="Series metadata enriched with a legible label, e.g. "
     "'Manufacturing: Labor productivity (output per hour), % change from same quarter a year ago, "
     "all persons, Seasonally Adjusted'.",
 )
 @dlt.expect_or_drop("valid_series_id", "series_id IS NOT NULL AND series_id != ''")
 def silver_bls_series():
-    series = dlt.read(f"{BRONZE_SCHEMA}.bronze_bls_series").select(
+    series = dlt.read(f"{CATALOG}.{BRONZE_SCHEMA}.bronze_bls_series").select(
         F.trim(F.col("series_id")).alias("series_id"),
         F.trim(F.col("sector_code")).alias("sector_code"),
         F.trim(F.col("class_code")).alias("class_code"),
@@ -96,19 +123,19 @@ def silver_bls_series():
         F.trim(F.col("duration_code")).alias("duration_code"),
         F.trim(F.col("seasonal")).alias("seasonal"),
     )
-    sector = dlt.read(f"{BRONZE_SCHEMA}.bronze_bls_pr_sector").select(
+    sector = dlt.read(f"{CATALOG}.{BRONZE_SCHEMA}.bronze_bls_pr_sector").select(
         F.trim(F.col("sector_code").cast("string")).alias("sector_code"),
         F.col("sector_name"),
     )
-    measure = dlt.read(f"{BRONZE_SCHEMA}.bronze_bls_pr_measure").select(
+    measure = dlt.read(f"{CATALOG}.{BRONZE_SCHEMA}.bronze_bls_pr_measure").select(
         F.trim(F.col("measure_code").cast("string")).alias("measure_code"),
         F.col("measure_text"),
     )
-    duration = dlt.read(f"{BRONZE_SCHEMA}.bronze_bls_pr_duration").select(
+    duration = dlt.read(f"{CATALOG}.{BRONZE_SCHEMA}.bronze_bls_pr_duration").select(
         F.trim(F.col("duration_code").cast("string")).alias("duration_code"),
         F.col("duration_text"),
     )
-    class_ = dlt.read(f"{BRONZE_SCHEMA}.bronze_bls_pr_class").select(
+    class_ = dlt.read(f"{CATALOG}.{BRONZE_SCHEMA}.bronze_bls_pr_class").select(
         F.trim(F.col("class_code").cast("string")).alias("class_code"),
         F.col("class_text"),
     )
@@ -158,11 +185,10 @@ def silver_bls_series():
 # MAGIC %md
 # MAGIC ## `silver_population`
 # MAGIC
-# MAGIC Normalizes column names defensively: DataUSA's Tesseract API is expected
-# MAGIC to return `Year` and `Population` fields, but we match case-insensitively
-# MAGIC and tolerate a few known variants (`ID Year`) rather than hard-failing on
-# MAGIC exact casing we haven't been able to verify against a live response --
-# MAGIC see PROCESS.md's retrospective for why.
+# MAGIC The DataUSA API should give us `Year` and `Population`, but in practice
+# MAGIC the casing can vary—sometimes it's `ID Year` instead. Rather than assume
+# MAGIC the exact field names and risk breaking on the next API change, we search
+# MAGIC for them case-insensitively. (See PROCESS.md for the story of why.)
 
 # COMMAND ----------
 
@@ -180,7 +206,7 @@ def _find_col(df, *candidates):
 @dlt.expect_or_drop("valid_year", "year IS NOT NULL")
 @dlt.expect_or_drop("valid_population", "population IS NOT NULL AND population > 0")
 def silver_population():
-    bronze = dlt.read(f"{BRONZE_SCHEMA}.bronze_population")
+    bronze = dlt.read(f"{CATALOG}.{BRONZE_SCHEMA}.bronze_population")
     year_col = _find_col(bronze, "Year", "ID Year")
     pop_col = _find_col(bronze, "Population")
     nation_col_candidates = [c for c in bronze.columns if c.lower() in ("nation", "id nation")]

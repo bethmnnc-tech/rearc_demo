@@ -29,6 +29,9 @@ variables:
   contact_name:
     description: Your name, sent in the BLS User-Agent header.
     default: BethR
+  file_path:
+    description: Notebook location for jobs
+    default: /Repos/beth_ramsey/rearc_demo_test/
 
 targets:
   dev:

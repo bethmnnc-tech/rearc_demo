@@ -1,0 +1,61 @@
+resources:
+  jobs:
+    dev_Run_Class_Job_for_Rearc_Demo:
+      name: "[dev] Run Class Job for Rearc Demo"
+      tasks:
+        - task_key: Run_Setup
+          notebook_task:
+            notebook_path: ${var.file_path}setup/00_setup_catalog_schema_volume
+            source: WORKSPACE
+        - task_key: run_bls_ingest
+          depends_on:
+            - task_key: Run_Setup
+          notebook_task:
+            notebook_path: ${var.file_path}ingestion/bls_ingest
+            source: WORKSPACE
+        - task_key: run_population_ingest
+          depends_on:
+            - task_key: Run_Setup
+          notebook_task:
+            notebook_path: ${var.file_path}ingestion/population_ingest
+            source: WORKSPACE
+          environment_key: Default
+        - task_key: Load_Classic_Bronze
+          depends_on:
+            - task_key: run_bls_ingest
+            - task_key: run_population_ingest
+          notebook_task:
+            notebook_path: ${var.file_path}pipeline/Classic_Pipeline/01_bronze_classic
+            source: WORKSPACE
+        - task_key: Load_Classic_Silver
+          depends_on:
+            - task_key: Load_Classic_Bronze
+          notebook_task:
+            notebook_path: ${var.file_path}pipeline/Classic_Pipeline/02_silver_classic
+            source: WORKSPACE
+          environment_key: Default
+        - task_key: Load_Classic_Gold
+          depends_on:
+            - task_key: Load_Classic_Silver
+          notebook_task:
+            notebook_path: ${var.file_path}pipeline/Classic_Pipeline/03_gold_classic
+            source: WORKSPACE
+          environment_key: Default
+      queue:
+        enabled: true
+      parameters:
+        - name: rdq.catalog
+          default:  ${var.catalog}
+        - name: rdq.bronze_schema
+          default: ${var.bronze_schema}
+        - name: rdq.silver_schema
+          default: ${var.silver_schema}
+        - name: rdq.gold_schema
+          default: ${var.gold_schema}
+        - name: rdq_volume
+          default: ${var.volume_name}
+      environments:
+        - environment_key: Default
+          spec:
+            environment_version: "5"
+      performance_target: PERFORMANCE_OPTIMIZED

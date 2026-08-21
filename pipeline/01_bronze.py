@@ -1,27 +1,50 @@
 # Databricks notebook source
+# /// script
+# [tool.databricks.environment]
+# environment_version = "5"
+# ///
 # MAGIC %md
-# MAGIC # Bronze layer
+# MAGIC ## Bronze Layer Overview
 # MAGIC
-# MAGIC Raw-as-landed ingestion of everything the `ingestion/` job dropped into the
-# MAGIC Volume, via Auto Loader (`cloudFiles`) streaming tables.
+# MAGIC This notebook implements the **Bronze (Raw) layer** of a medallion architecture data pipeline for BLS (Bureau of Labor Statistics) productivity data and US population data.
 # MAGIC
-# MAGIC **Why Auto Loader / streaming tables here, not a batch `spark.read`:**
-# MAGIC Auto Loader tracks which files it has already processed (via its
-# MAGIC checkpoint), so re-triggering this pipeline does **not** reprocess files
-# MAGIC it already ingested -- new/changed files are picked up incrementally.
-# MAGIC That's what satisfies "if we re-run this, it shouldn't reprocess anything
-# MAGIC it's already ingested" at the pipeline layer, on top of the ingestion job's
-# MAGIC own manifest-based skip logic (which avoids the network call in the first
-# MAGIC place). `cloudFiles.allowOverwrites = true` additionally means: if BLS
-# MAGIC revises `pr.data.0.Current` in place (same filename, new content -- which is
-# MAGIC exactly how BLS publishes revisions), Auto Loader will pick that up as a
-# MAGIC change rather than ignoring it because "we've seen this path before."
+# MAGIC ### Key Features
 # MAGIC
-# MAGIC **Why bronze stays stringly-typed:** Bronze should be a faithful,
-# MAGIC replayable copy of the source. Trimming BLS's fixed-width padding, casting
-# MAGIC types, and validating value ranges are all Silver's job -- that way if a
-# MAGIC cleaning rule turns out to be wrong, Bronze still has the untouched original
-# MAGIC to reprocess from.
+# MAGIC **Auto Loader with Checkpointing**
+# MAGIC - Uses Databricks Auto Loader (`cloudFiles` format) to incrementally ingest data from Unity Catalog volumes
+# MAGIC - Checkpoints prevent duplicate data loads if the notebook is rerun
+# MAGIC - Safe for scheduled/repeated execution
+# MAGIC
+# MAGIC **No Transformations**
+# MAGIC - Bronze tables mirror source data exactly
+# MAGIC - Preserves ability to reload from bronze as a starting point
+# MAGIC - Acts as an audit trail of raw data as received
+# MAGIC
+# MAGIC **Data Sources**
+# MAGIC 1. **BLS Productivity Survey** (`pr.*` files from `bls_gov` volume)
+# MAGIC    - Main data file: `pr.data.0.Current` (full historical time series per series_id)
+# MAGIC    - Alternate data file: `pr.data.1.AllData` (landed for completeness, not used downstream)
+# MAGIC    - Series metadata: `pr.series`
+# MAGIC    - Reference/lookup tables: `pr.sector`, `pr.class`, `pr.measure`, `pr.duration`, `pr.seasonal`, `pr.footnote`, `pr.period`
+# MAGIC    - Documentation: `pr.txt` (BLS field dictionary)
+# MAGIC
+# MAGIC 2. **Population Data** (DataUSA API from `population` volume)
+# MAGIC    - JSON format with Year/Nation/Population records
+# MAGIC
+# MAGIC **Data Quality**
+# MAGIC - Uses DLT expectations to validate required fields
+# MAGIC - `@dlt.expect_or_drop` removes invalid rows
+# MAGIC - `@dlt.expect` logs quality metrics without dropping
+# MAGIC
+# MAGIC **Metadata Tracking**
+# MAGIC - All tables include `_ingested_at` timestamp
+# MAGIC - Data tables include `_source_file` for traceability
+# MAGIC
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC Create varibles with defaults
 
 # COMMAND ----------
 
@@ -29,32 +52,33 @@ import dlt
 from pyspark.sql import functions as F
 from pyspark.sql.types import StructType, StructField, StringType
 
+
+# COMMAND ----------
+
+# Read from pipeline configuration (works in DLT pipeline execution)
 CATALOG = spark.conf.get("rdq.catalog", "rearc_dev_001")
 BRONZE_SCHEMA = spark.conf.get("rdq.bronze_schema", "bronze")
-SILVER_SCHEMA = spark.conf.get("rdq.silver_schema", "silver")  # noqa: F841 -- used by other pipeline files
-GOLD_SCHEMA = spark.conf.get("rdq.gold_schema", "gold")  # noqa: F841 -- used by other pipeline files
+SILVER_SCHEMA = spark.conf.get("rdq.silver_schema", "silver")
+GOLD_SCHEMA = spark.conf.get("rdq.gold_schema", "gold")
 VOLUME_SCHEMA = spark.conf.get("rdq.volume_schema", "volumes")
 VOLUME = spark.conf.get("rdq.volume", "bls_gov")
 VOLUME_ROOT = f"/Volumes/{CATALOG}/{VOLUME_SCHEMA}/{VOLUME}"
 BLS_RAW_PATH = f"{VOLUME_ROOT}/bls_pr"
 POPULATION_RAW_PATH = f"{VOLUME_ROOT}/population"
 
-# Bronze/Silver/Gold are three separate schemas (not three sets of prefixed
-# tables in one schema), so every @dlt.table below is registered with an
-# explicit "{schema}.{name}" name -- and every downstream dlt.read() must
-# reference that exact qualified string. See ingestion/common.py for why.
-
 # COMMAND ----------
 
 # MAGIC %md
 # MAGIC ## `pr.data.0.Current`
 # MAGIC
-# MAGIC This file's header/sample confirms it already carries the **full** history
-# MAGIC per series (its first rows for `PRS30006011` start at 1995, not the current
-# MAGIC year), while `pr.data.1.AllData` is a larger, overlapping export of the same
-# MAGIC underlying series. We land both raw (below), but build Silver/Gold only from
-# MAGIC `pr.data.0.Current` to avoid double-counting the same observations from two
-# MAGIC overlapping sources -- see PROCESS.md for the full reasoning.
+# MAGIC Checked the header and first few rows — this file has the full historical 
+# MAGIC data for each series. For example, `PRS30006011` starts back in 1995, not 
+# MAGIC just recent years. Meanwhile `pr.data.1.AllData` is bigger and has a lot of 
+# MAGIC the same series.
+# MAGIC
+# MAGIC We're loading both into bronze (raw storage), but downstream in silver and 
+# MAGIC gold we only use `pr.data.0.Current`. That way we don't accidentally count 
+# MAGIC the same data points twice. See PROCESS.md for more detail on why.
 # MAGIC
 
 # COMMAND ----------
@@ -71,13 +95,13 @@ BLS_DATA_SCHEMA = StructType(
 
 
 @dlt.table(
-    name=f"{BRONZE_SCHEMA}.bronze_bls_data",
+    name=f"{CATALOG}.{BRONZE_SCHEMA}.bronze_bls_data",
     comment="Raw pr.data.0.Current, one row per series_id/year/period as published by BLS.",
 )
-@dlt.expect_or_drop("has_series_id", "series_id IS NOT NULL")
+@dlt.expect_or_drop("has_series_id", "series_id IS NOT NULL")  #Expectations allows you check if the data is good.  If not, you drop or isolate the data into a separate table.
 @dlt.expect_or_drop("has_year", "year IS NOT NULL")
 @dlt.expect_or_drop("has_period", "period IS NOT NULL")
-@dlt.expect("has_value", "value IS NOT NULL")  # flag, don't drop -- a null value may still be worth keeping raw
+@dlt.expect("has_value", "value IS NOT NULL")
 def bronze_bls_data():
     return (
         spark.readStream.format("cloudFiles")
@@ -86,7 +110,7 @@ def bronze_bls_data():
         .option("header", "true")
         .option("cloudFiles.allowOverwrites", "true")
         .option("pathGlobFilter", "pr.data.0.Current")
-        .schema(BLS_DATA_SCHEMA)
+        .schema(BLS_DATA_SCHEMA) #defined schema above
         .load(BLS_RAW_PATH)
         .withColumn("_ingested_at", F.current_timestamp())
         .withColumn("_source_file", F.col("_metadata.file_path"))
@@ -95,13 +119,14 @@ def bronze_bls_data():
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## `pr.data.1.AllData` -- landed for completeness/auditability, not used downstream
+# MAGIC ## `pr.data.1.AllData` 
+# MAGIC landed for completeness/auditability, not used downstream
 # MAGIC
 
 # COMMAND ----------
 
 @dlt.table(
-    name=f"{BRONZE_SCHEMA}.bronze_bls_data_alldata",
+    name=f"{CATALOG}.{BRONZE_SCHEMA}.bronze_bls_data_alldata",
     comment="Raw pr.data.1.AllData, landed for completeness. Not used by Silver/Gold -- see PROCESS.md.",
 )
 def bronze_bls_data_alldata():
@@ -120,7 +145,8 @@ def bronze_bls_data_alldata():
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## `pr.series` -- series metadata (needed to build human-readable labels in Gold)
+# MAGIC ## `pr.series` 
+# MAGIC series metadata (needed to build legible labels in Gold)
 # MAGIC
 
 # COMMAND ----------
@@ -143,8 +169,8 @@ BLS_SERIES_SCHEMA = StructType(
 )
 
 
-@dlt.table(name=f"{BRONZE_SCHEMA}.bronze_bls_series", comment="Raw pr.series -- one row of metadata per series_id.")
-@dlt.expect_or_drop("has_series_id", "series_id IS NOT NULL")
+@dlt.table(name=f"{CATALOG}.{BRONZE_SCHEMA}.bronze_bls_series", comment="Raw pr.series -- one row of metadata per series_id.")
+@dlt.expect_or_drop("has_series_id", "series_id IS NOT NULL")  #drop if key is null
 def bronze_bls_series():
     return (
         spark.readStream.format("cloudFiles")
@@ -188,7 +214,7 @@ for _lookup_name in LOOKUP_FILES:
     # table -- build one via a small factory instead of copy/pasting the body
     # 7 times.
     def _make_lookup_table(file_name):
-        table_name = f"{BRONZE_SCHEMA}.bronze_bls_" + file_name.replace(".", "_")
+        table_name = f"{CATALOG}.{BRONZE_SCHEMA}.bronze_bls_" + file_name.replace(".", "_")
 
         @dlt.table(name=table_name, comment=f"Raw {file_name} reference/lookup file.")
         def _bronze_lookup():
@@ -210,22 +236,22 @@ for _lookup_name in LOOKUP_FILES:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## `pr.txt` -- BLS's own documentation for this survey
+# MAGIC ## `pr.txt` -- BLS's own documentation
 # MAGIC
-# MAGIC Not tabular (it's the human-readable field dictionary BLS ships alongside
-# MAGIC the data -- series/data/mapping file formats, field definitions, update
-# MAGIC schedule), but it's still part of "the full contents of the folder," and
-# MAGIC it's the actual authoritative source this pipeline's schemas and the
-# MAGIC Silver-layer label logic were built against (see PROCESS.md) -- worth
-# MAGIC landing as its own bronze table for the same auditability reason as
-# MAGIC everything else here: so a reviewer can see exactly what we built against,
-# MAGIC not just take our word for the schema.
+# MAGIC This isn't a data file — it's BLS's field dictionary that comes with the
+# MAGIC survey data. Has file format specs, field definitions, and the update
+# MAGIC schedule.
+# MAGIC
+# MAGIC We're loading it into bronze anyway because the schemas and label mappings
+# MAGIC in Silver were built from this file (details in PROCESS.md). Keeping it
+# MAGIC here means anyone reviewing the pipeline can check our work against the
+# MAGIC original source instead of taking the schema on faith.
 # MAGIC
 
 # COMMAND ----------
 
 @dlt.table(
-    name=f"{BRONZE_SCHEMA}.bronze_bls_pr_txt",
+    name=f"{CATALOG}.{BRONZE_SCHEMA}.bronze_bls_pr_txt",
     comment="Raw pr.txt, BLS's documentation for the PR survey, one row per line.",
 )
 def bronze_bls_pr_txt():
@@ -251,7 +277,7 @@ def bronze_bls_pr_txt():
 # COMMAND ----------
 
 @dlt.table(
-    name=f"{BRONZE_SCHEMA}.bronze_population",
+    name=f"{CATALOG}.{BRONZE_SCHEMA}.bronze_population",
     comment="Raw DataUSA population API response, one row per (Year, Nation) record.",
 )
 @dlt.expect("has_data_row", "true")  # placeholder row-level check; real validation happens post-explode in Silver

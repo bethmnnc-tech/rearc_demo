@@ -14,6 +14,7 @@
 import dlt
 from pyspark.sql import functions as F
 
+CATALOG = spark.conf.get("rdq.catalog", "rearc_dev_001")
 GOLD_SCHEMA = spark.conf.get("rdq.gold_schema", "gold")
 
 # COMMAND ----------
@@ -26,39 +27,39 @@ def _symmetric_diff_count(left, right):
 # COMMAND ----------
 
 @dlt.table(
-    name=f"{GOLD_SCHEMA}.gold_verification_q1",
+    name=f"{CATALOG}.{GOLD_SCHEMA}.gold_verification_q1",
     comment="Row count of differences between gold_population_stats and its PySpark alternate. Should always be 0.",
 )
 @dlt.expect_or_fail("sql_and_pyspark_agree", "diff_row_count = 0")
 def gold_verification_q1():
-    primary = dlt.read(f"{GOLD_SCHEMA}.gold_population_stats")
-    alt = dlt.read(f"{GOLD_SCHEMA}.gold_population_stats_pyspark_alt")
+    primary = dlt.read(f"{CATALOG}.{GOLD_SCHEMA}.gold_population_stats")
+    alt = dlt.read(f"{CATALOG}.{GOLD_SCHEMA}.gold_population_stats_pyspark_alt")
     return spark.createDataFrame(
         [(_symmetric_diff_count(primary, alt),)], schema="diff_row_count INT"
     )
 
 
 @dlt.table(
-    name=f"{GOLD_SCHEMA}.gold_verification_q2",
+    name=f"{CATALOG}.{GOLD_SCHEMA}.gold_verification_q2",
     comment="Row count of differences between gold_bls_best_year_per_series and its PySpark alternate. Should always be 0.",
 )
 @dlt.expect_or_fail("sql_and_pyspark_agree", "diff_row_count = 0")
 def gold_verification_q2():
-    primary = dlt.read(f"{GOLD_SCHEMA}.gold_bls_best_year_per_series")
-    alt = dlt.read(f"{GOLD_SCHEMA}.gold_bls_best_year_per_series_pyspark_alt")
+    primary = dlt.read(f"{CATALOG}.{GOLD_SCHEMA}.gold_bls_best_year_per_series")
+    alt = dlt.read(f"{CATALOG}.{GOLD_SCHEMA}.gold_bls_best_year_per_series_pyspark_alt")
     return spark.createDataFrame(
         [(_symmetric_diff_count(primary, alt),)], schema="diff_row_count INT"
     )
 
 
 @dlt.table(
-    name=f"{GOLD_SCHEMA}.gold_verification_q3",
+    name=f"{CATALOG}.{GOLD_SCHEMA}.gold_verification_q3",
     comment="Row count of differences between gold_prs30006032_q01_population and its PySpark alternate. Should always be 0.",
 )
 @dlt.expect_or_fail("sql_and_pyspark_agree", "diff_row_count = 0")
 def gold_verification_q3():
-    primary = dlt.read(f"{GOLD_SCHEMA}.gold_prs30006032_q01_population")
-    alt = dlt.read(f"{GOLD_SCHEMA}.gold_prs30006032_q01_population_pyspark_alt")
+    primary = dlt.read(f"{CATALOG}.{GOLD_SCHEMA}.gold_prs30006032_q01_population")
+    alt = dlt.read(f"{CATALOG}.{GOLD_SCHEMA}.gold_prs30006032_q01_population_pyspark_alt")
     return spark.createDataFrame(
         [(_symmetric_diff_count(primary, alt),)], schema="diff_row_count INT"
     )
