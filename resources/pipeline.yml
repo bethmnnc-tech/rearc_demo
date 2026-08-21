@@ -1,0 +1,30 @@
+resources:
+  pipelines:
+    rearc_pipeline:
+      name: "[${bundle.target}] Rearc Data Quest - Productivity Pipeline"
+      catalog: ${var.catalog}
+      target: ${var.bronze_schema}
+      channel: CURRENT
+      photon: false
+      configuration:
+        rdq.catalog: ${var.catalog}
+        rdq.bronze_schema: ${var.bronze_schema}
+        rdq.silver_schema: ${var.silver_schema}
+        rdq.gold_schema: ${var.gold_schema}
+        rdq.volume_schema: ${var.volume_schema}
+        rdq.volume: ${var.volume_name}
+      libraries:
+        - notebook:
+            path: ../pipeline/01_bronze.py
+        - notebook:
+            path: ../pipeline/02_silver.py
+        - notebook:
+            path: ../pipeline/03_gold_sql.sql
+        - notebook:
+            path: ../pipeline/03_gold_pyspark_alt.py
+        - notebook:
+            path: ../pipeline/04_gold_verification.py
+      clusters:
+        - label: default
+          num_workers: 1
+          node_type_id: Standard_DS3_v2 # change to match your cloud

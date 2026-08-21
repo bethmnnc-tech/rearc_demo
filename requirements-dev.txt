@@ -1,0 +1,4 @@
+# Dependencies for running tests/ locally (not needed inside Databricks,
+# where requests + pyspark are already on the cluster).
+pytest>=7.4
+requests>=2.31

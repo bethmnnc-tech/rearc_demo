@@ -1,0 +1,38 @@
+bundle:
+  name: rearc-data-quest-databricks
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog catalog to use/create.
+    default: rearc_dev_001
+  bronze_schema:
+    description: Schema for Bronze tables.
+    default: bronze
+  silver_schema:
+    description: Schema for Silver tables.
+    default: silver
+  gold_schema:
+    description: Schema for Gold tables.
+    default: gold
+  volume_schema:
+    description: Schema holding the raw-file Volume.
+    default: volumes
+  volume_name:
+    description: Volume name for raw landed files.
+    default: bls_gov
+  contact_email:
+    description: Your real contact email, sent in the BLS User-Agent header per bls.gov/bls/pss.htm.
+    default: bethmnnc@gmail.com
+  contact_name:
+    description: Your name, sent in the BLS User-Agent header.
+    default: BethR
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-85734dd2-4cc4.cloud.databricks.com

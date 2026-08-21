@@ -1,0 +1,84 @@
+resources:
+  jobs:
+    bls_ingestion_job:
+      name: "[${bundle.target}] Rearc Data Quest - Ingestion"
+      tags:
+        project: rearc-data-quest
+
+      parameters:
+        - name: rdq_catalog
+          default: ${var.catalog}
+        - name: rdq_bronze_schema
+          default: ${var.bronze_schema}
+        - name: rdq_silver_schema
+          default: ${var.silver_schema}
+        - name: rdq_gold_schema
+          default: ${var.gold_schema}
+        - name: rdq_volume_schema
+          default: ${var.volume_schema}
+        - name: rdq_volume
+          default: ${var.volume_name}
+        - name: rdq_contact_name
+          default: ${var.contact_name}
+        - name: rdq_contact_email
+          default: ${var.contact_email}
+
+      tasks:
+        - task_key: setup_catalog
+          notebook_task:
+            notebook_path: ../setup/00_setup_catalog_schema_volume.py
+            base_parameters:
+              rdq_catalog: "{{job.parameters.rdq_catalog}}"
+              rdq_bronze_schema: "{{job.parameters.rdq_bronze_schema}}"
+              rdq_silver_schema: "{{job.parameters.rdq_silver_schema}}"
+              rdq_gold_schema: "{{job.parameters.rdq_gold_schema}}"
+              rdq_volume_schema: "{{job.parameters.rdq_volume_schema}}"
+              rdq_volume: "{{job.parameters.rdq_volume}}"
+          new_cluster: &ingestion_cluster
+            spark_version: 15.4.x-scala2.12
+            num_workers: 0
+            node_type_id: Standard_DS3_v2 # change to match your cloud
+            spark_conf:
+              spark.databricks.cluster.profile: singleNode
+              spark.master: local[*]
+            custom_tags:
+              ResourceClass: SingleNode
+
+        - task_key: ingest_bls
+          depends_on:
+            - task_key: setup_catalog
+          notebook_task:
+            notebook_path: ../ingestion/bls_ingest.py
+            base_parameters:
+              rdq_catalog: "{{job.parameters.rdq_catalog}}"
+              rdq_bronze_schema: "{{job.parameters.rdq_bronze_schema}}"
+              rdq_volume_schema: "{{job.parameters.rdq_volume_schema}}"
+              rdq_volume: "{{job.parameters.rdq_volume}}"
+              rdq_contact_name: "{{job.parameters.rdq_contact_name}}"
+              rdq_contact_email: "{{job.parameters.rdq_contact_email}}"
+          new_cluster: *ingestion_cluster
+
+        - task_key: ingest_population
+          depends_on:
+            - task_key: setup_catalog
+          notebook_task:
+            notebook_path: ../ingestion/population_ingest.py
+            base_parameters:
+              rdq_catalog: "{{job.parameters.rdq_catalog}}"
+              rdq_volume_schema: "{{job.parameters.rdq_volume_schema}}"
+              rdq_volume: "{{job.parameters.rdq_volume}}"
+              rdq_contact_name: "{{job.parameters.rdq_contact_name}}"
+              rdq_contact_email: "{{job.parameters.rdq_contact_email}}"
+          new_cluster: *ingestion_cluster
+
+        - task_key: run_pipeline
+          depends_on:
+            - task_key: ingest_bls
+            - task_key: ingest_population
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.rearc_pipeline.id}
+
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?" # 6am daily, workspace timezone
+        timezone_id: America/New_York
+        pause_status: PAUSED # flip to UNPAUSED once you've validated a manual run
