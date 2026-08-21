@@ -5,6 +5,7 @@ resources:
       catalog: ${var.catalog}
       target: ${var.bronze_schema}
       channel: CURRENT
+      serverless: true
       photon: false
       configuration:
         rdq.catalog: ${var.catalog}
@@ -24,7 +25,3 @@ resources:
             path: ../pipeline/03_gold_pyspark_alt.py
         - notebook:
             path: ../pipeline/04_gold_verification.py
-      clusters:
-        - label: default
-          num_workers: 1
-          node_type_id: Standard_DS3_v2 # change to match your cloud

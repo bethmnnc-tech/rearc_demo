@@ -34,15 +34,7 @@ resources:
               rdq_gold_schema: "{{job.parameters.rdq_gold_schema}}"
               rdq_volume_schema: "{{job.parameters.rdq_volume_schema}}"
               rdq_volume: "{{job.parameters.rdq_volume}}"
-          new_cluster: &ingestion_cluster
-            spark_version: 15.4.x-scala2.12
-            num_workers: 0
-            node_type_id: Standard_DS3_v2 # change to match your cloud
-            spark_conf:
-              spark.databricks.cluster.profile: singleNode
-              spark.master: local[*]
-            custom_tags:
-              ResourceClass: SingleNode
+          compute_key: serverless
 
         - task_key: ingest_bls
           depends_on:
@@ -56,7 +48,7 @@ resources:
               rdq_volume: "{{job.parameters.rdq_volume}}"
               rdq_contact_name: "{{job.parameters.rdq_contact_name}}"
               rdq_contact_email: "{{job.parameters.rdq_contact_email}}"
-          new_cluster: *ingestion_cluster
+          compute_key: serverless
 
         - task_key: ingest_population
           depends_on:
@@ -69,7 +61,7 @@ resources:
               rdq_volume: "{{job.parameters.rdq_volume}}"
               rdq_contact_name: "{{job.parameters.rdq_contact_name}}"
               rdq_contact_email: "{{job.parameters.rdq_contact_email}}"
-          new_cluster: *ingestion_cluster
+          compute_key: serverless
 
         - task_key: run_pipeline
           depends_on:
