@@ -34,7 +34,6 @@ resources:
               rdq_gold_schema: "{{job.parameters.rdq_gold_schema}}"
               rdq_volume_schema: "{{job.parameters.rdq_volume_schema}}"
               rdq_volume: "{{job.parameters.rdq_volume}}"
-          compute_key: serverless
 
         - task_key: ingest_bls
           depends_on:
@@ -48,7 +47,6 @@ resources:
               rdq_volume: "{{job.parameters.rdq_volume}}"
               rdq_contact_name: "{{job.parameters.rdq_contact_name}}"
               rdq_contact_email: "{{job.parameters.rdq_contact_email}}"
-          compute_key: serverless
 
         - task_key: ingest_population
           depends_on:
@@ -61,7 +59,6 @@ resources:
               rdq_volume: "{{job.parameters.rdq_volume}}"
               rdq_contact_name: "{{job.parameters.rdq_contact_name}}"
               rdq_contact_email: "{{job.parameters.rdq_contact_email}}"
-          compute_key: serverless
 
         - task_key: run_pipeline
           depends_on:

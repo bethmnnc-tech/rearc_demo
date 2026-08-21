@@ -6,7 +6,6 @@ resources:
       target: ${var.bronze_schema}
       channel: CURRENT
       serverless: true
-      photon: false
       configuration:
         rdq.catalog: ${var.catalog}
         rdq.bronze_schema: ${var.bronze_schema}
