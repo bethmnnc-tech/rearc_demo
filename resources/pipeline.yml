@@ -19,7 +19,7 @@ resources:
         - notebook:
             path: ../pipeline/02_silver.py
         - notebook:
-            path: ../pipeline/03_gold_sql.sql
+            path: ../pipeline/03_gold_sql.py
         - notebook:
             path: ../pipeline/03_gold_pyspark_alt.py
         - notebook:
