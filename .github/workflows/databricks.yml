@@ -13,16 +13,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Databricks CLI
         uses: databricks/setup-cli@main
+
+      - name: Check Authentication
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_WORKSPACE_URL }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_PAT }}
+        run: |
+          echo "Testing authentication..."
+          databricks current-user me || {
+            echo "❌ Authentication failed!"
+            echo "Check that secrets DATABRICKS_WORKSPACE_URL and DATABRICKS_PAT are set correctly"
+            exit 1
+          }
 
       - name: Validate Bundle
         env:
           DATABRICKS_HOST: ${{ secrets.DATABRICKS_WORKSPACE_URL }}
           DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_PAT }}
         run: |
+          echo "Validating bundle..."
           databricks bundle validate -t dev
 
       - name: Deploy Bundle
