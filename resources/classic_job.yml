@@ -1,7 +1,7 @@
 resources:
   jobs:
     dev_Run_Class_Job_for_Rearc_Demo:
-      name: "[dev] Run Class Job for Rearc Demo"
+      name: "Classic Job"
       tasks:
         - task_key: Run_Setup
           notebook_task:

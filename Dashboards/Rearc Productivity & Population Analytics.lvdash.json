@@ -1,0 +1,319 @@
+{
+  "datasets": [
+    {
+      "name": "productivity_population",
+      "displayName": "Productivity & Population Trend",
+      "queryLines": [
+        "SELECT\n",
+        "  year,\n",
+        "  value as productivity_value,\n",
+        "  population\n",
+        "FROM\n",
+        "  rearc_dev_001.gold.gold_prs30006032_q01_population\n",
+        "ORDER BY\n",
+        "  year"
+      ]
+    },
+    {
+      "name": "population_stats",
+      "displayName": "Population Statistics",
+      "queryLines": [
+        "SELECT\n",
+        "  mean_population,\n",
+        "  stddev_pop_population as stddev_population\n",
+        "FROM\n",
+        "  rearc_dev_001.gold.gold_population_stats\n",
+        "WHERE\n",
+        "  start_year = 2013\n",
+        "  AND end_year = 2018"
+      ]
+    },
+    {
+      "name": "bls_best_year",
+      "displayName": "BLS Best Year Per Series",
+      "queryLines": [
+        "SELECT\n",
+        "  series_id,\n",
+        "  series_label,\n",
+        "  best_year,\n",
+        "  best_year_summed_value\n",
+        "FROM\n",
+        "  rearc_dev_001.gold.gold_bls_best_year_per_series\n",
+        "ORDER BY\n",
+        "  best_year_summed_value DESC"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "0c85cae0",
+      "displayName": "Page 1",
+      "layout": [
+        {
+          "widget": {
+            "name": "mean_population",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "population_stats",
+                  "fields": [
+                    {
+                      "name": "mean_population",
+                      "expression": "`mean_population`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Mean Population (2013-2018)",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "mean_population",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "stddev_population",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "population_stats",
+                  "fields": [
+                    {
+                      "name": "stddev_population",
+                      "expression": "`stddev_population`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "frame": {
+                "title": "Population Std Deviation (2013-2018)",
+                "showTitle": true
+              },
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "stddev_population",
+                  "rowNumber": 0
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 6,
+            "y": 0,
+            "width": 6,
+            "height": 4
+          }
+        },
+        {
+          "widget": {
+            "name": "bls_bar_chart",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "bls_best_year",
+                  "fields": [
+                    {
+                      "name": "series_label",
+                      "expression": "`series_label`"
+                    },
+                    {
+                      "name": "sum(best_year_summed_value)",
+                      "expression": "SUM(`best_year_summed_value`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Best Year Values by Series",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "series_label",
+                  "displayName": "Series",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                },
+                "y": {
+                  "fieldName": "sum(best_year_summed_value)",
+                  "displayName": "Best Year Value",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "series_label",
+                  "displayName": "Series",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 12,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "productivity_line_chart",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "productivity_population",
+                  "fields": [
+                    {
+                      "name": "year",
+                      "expression": "`year`"
+                    },
+                    {
+                      "name": "productivity_value",
+                      "expression": "`productivity_value`"
+                    }
+                  ],
+                  "filters": [
+                    {
+                      "expression": "IN_RANGE(`year`, 2013, 2018)"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "frame": {
+                "title": "Productivity Value Trend Over Years",
+                "showTitle": true
+              },
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "year",
+                  "displayName": "Year",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "y": {
+                  "fieldName": "productivity_value",
+                  "displayName": "Productivity Value",
+                  "scale": {
+                    "type": "quantitative"
+                  }
+                },
+                "color": {
+                  "fieldName": "year",
+                  "displayName": "Year",
+                  "scale": {
+                    "type": "categorical"
+                  }
+                }
+              },
+              "data": {
+                "queryName": "main_query"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 12,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS",
+      "layoutVersion": "GRID_V1"
+    }
+  ],
+  "uiSettings": {
+    "theme": {
+      "visualizationColors": [
+        "#1f77b4",
+        "#ff7f0e",
+        "#2ca02c",
+        "#d62728",
+        "#9467bd",
+        "#8c564b",
+        "#e377c2",
+        "#7f7f7f",
+        "#bcbd22",
+        "#17becf"
+      ],
+      "widgetHeaderAlignment": "ALIGNMENT_UNSPECIFIED",
+      "widgetPadding": 16,
+      "widgetMargin": 8,
+      "widgetCornerRadius": 8,
+      "widgetShadow": 10,
+      "fontSettings": {
+        "base": {
+          "fontFamily": "Inter",
+          "fontSize": 14
+        },
+        "widgetTitle": {
+          "fontFamily": "Inter",
+          "fontSize": 16,
+          "fontWeight": 600
+        },
+        "fieldTitle": {
+          "fontFamily": "Inter",
+          "fontSize": 12,
+          "fontWeight": 500
+        },
+        "fieldValue": {
+          "fontFamily": "Inter",
+          "fontSize": 14,
+          "fontWeight": 400
+        }
+      }
+    },
+    "applyModeEnabled": false
+  }
+}

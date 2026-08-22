@@ -23,11 +23,35 @@ read-only analyst `SELECT` on the whole `gold` schema in one statement,
 automatically covering any Gold table added later, with no way for that
 grant to accidentally leak into Bronze/Silver.
 
-**Bronze uses Auto Loader (streaming tables); Silver/Gold are materialized
-views (full recompute).** The requirement that re-running ingestion
-"shouldn't reprocess anything it's already ingested" is really two separate
+##Jobs and Pipelines
+This is where it gets fun. 
+The jobs and dlt pipelines are in the "resource" folder   The SDP Pipeline is in the "pipelin/Rearc_SDP_Pipeline folder.
+###ATTEMPT 1 - 
+####Lakeflow Declarative Pipeline with Databricks Free Edition - Serverless Compute - LIMITED QUOTA
+Goal - Use Lakeflow Declarative Pipeline to pull website to volume to bronze to silver to gold.
+
+###ATTEMPT 2 - 
+####Spark Declarative Pipelines with Databricks Free Edition - Serverless Compute - LIMITED QUOTA
+Goal - Use streaming tables and .py and .sql files to pull website to volume to bronze to siler to gold.  SDP has more statics - but wanted to see if I could get around the DBX Free Edition Quota Issues. 
+
+###ATTEMPT 3 -
+####Classic Job with Databricks Free Edition - Serverless Compute - LIMITED QUOTA
+Goal - Use non-streaming tables and classic job pull website to volume to bronze to siler to gold.
+
+
+To allow for the data to be reloaded and use Autoloader with checkpointing.  Everything felt good.  The pipeline looked good.  Got some errors due to the Population data.  While debugging those I hit my Quota with the DBX Free Edition.  I don't know when the quota resets, and I needed to get this completed.  So I tried other load options to see if they used fewer DBUs and I might get this completed.
+
+Switching from Lakeflow Declarative Pipeline to Spark Declarative Pipeline didn't make a difference.  I can't get the SDP pipeline to dry run because of the Quota. 
+
+Tried the "Classic" approach - run notebooks in a job notebook by notebook.  Still using Serverless, because that's all that is available.  But the job works. I had to add in a function to replace characters in table and column names landing the data into non-streaming tables.  
+
+##The Job/Pipeline Flow
+
+**Bronze uses Auto Loader; Silver/Gold are materialized
+views (full recompute).** The requirement that re-running ingestion "shouldn't reprocess anything it's already ingested" is really two separate
 problems, and I solved them at two different layers:
 
+ 
 1. *Don't re-download from BLS unnecessarily.* The ingestion job
    (`ingestion/bls_ingest.py`) keeps a Delta manifest table of every file's
    `(name, size, last_modified)` and only downloads a file if it's new or
@@ -70,6 +94,7 @@ source — it's already landed and ready.
 **SQL is the primary implementation for all three Gold questions; PySpark is
 the documented alternate — and both actually run.** Rather than write the
 PySpark version once as a comment or dead code, I wired
+***Note I didn't add the validation in for the Classic Job.  In the real world, I'd suggest importing Great Expectations from Databricks Marketplace.  It's simple enough and free.
 `03_gold_pyspark_alt.py`'s three tables into the pipeline as real
 `*_pyspark_alt` tables, and added `04_gold_verification.py`, which diffs each
 primary table against its alternate (`exceptAll` both directions) and fails
@@ -124,18 +149,14 @@ push on them:
   explicit-schema-plus-expectation treatment there too, and consider
   `mergeSchema`/schema evolution settings if BLS's own format changed
   intentionally.
-- **Data volume.** Everything here fits comfortably in memory, so I went with
-  full-recompute materialized views for Silver/Gold and just used
-  `dropDuplicates` as a batch operation. At real client scale I'd move Silver
-  to `dlt.read_stream` with `dropDuplicatesWithinWatermark` or an `APPLY
-  CHANGES INTO` target, and think harder about partitioning Gold by a natural
-  key (year, sector) rather than recomputing the whole thing every run.
-- **Cost.** The ingestion job spins up a fresh single-node cluster; for a
-  daily few-MB pull that's pretty wasteful — I'd move it to serverless or a
-  shared small cluster pool. The pipeline itself is small enough that its
-  default cluster sizing is fine, but I'd definitely watch the DBU cost of
-  the (currently daily) schedule once we know real usage patterns and probably
-  relax it — BLS updates this survey quarterly, not daily.
+- **Data volume.** Everything here fits comfortably in memory, which let me
+use full-recompute materialized views for Silver/Gold and get away with
+`dropDuplicates` as a batch operation. At real client volume I'd move
+Silver to a streaming `@dp.table` with `dropDuplicatesWithinWatermark` or
+an auto-CDC (`create_auto_cdc_flow`) target, and think harder about
+partitioning Gold by a natural key (year, sector) rather than
+materializing the whole thing every run.
+- **Cost.** Based on customers SLA, I would use jobs for a cheaper cost overall with job compute.  If they needed the data faster, I would use the Spark Declarative Pipelines with serverless, which autoscales. That sounds great until you prove out that you can run a Job with Job Clusters and stay under the DBX Quota.  I try to keep the costs down but not at the cost of doing business.  Would use a Cost Dashboard against the system billing tables to allow the team to monitor their spending.
 - **Access control.** Bronze/Silver/Gold are three separate schemas (not one
   schema with prefixed table names) specifically so this could be a clean
   schema-level grant — `resources/grants_readonly_analyst.sql` grants an
@@ -186,15 +207,14 @@ produce `NULL` labels for measures `01`–`09`. That's the kind of bug that's
 obvious once you know to look for it and invisible otherwise, which is why
 Bronze explicitly avoids `cloudFiles.inferColumnTypes`.
 
-One thing I couldn't fully verify during scaffolding: I wasn't able to fetch
-a live response from the DataUSA population API to confirm its exact JSON
-field casing (`Year` vs `year`, whether `Nation` is present, etc.). Silver's
-population parsing (`_find_col` in `pipeline/02_silver.py`) matches column
-names case-insensitively with a couple of known variants rather than assuming
-exact casing, specifically because of that gap. **First thing to check on the
-actual run:** confirm the real field names and tighten that matching back
-down to an explicit schema.
-
 ## AI usage disclosure
 
-Coming Soon!!  Testing DAB Soon
+I used AI to help me with questions on design and trouble shooting errors.  I set up DAB within my GitHub and my DBX Free Edition.  When I hit an error within GitHub during the deployment (Action), I took the error and had CoPilot within GitHub and Genie Code with Databricks review the error to see if it was on the Databricks side or GitHub side.  Using Genie Code within Databricks to debug everything in your workspace is amazing for a Data Engineer.  Trying to use Genie to help you with a GitHub error based on your databricks.yml set up - not so much.  I was able to work it out with my two minnions - (GitHub and Genie).  The jobs/pipelines were deployed using GitHub and DAB back to Databricks.  I use Genie Code like a pair programmer.  
+I use AI to read through my notebooks to help me with documentation.  It has a simplier way of writing things for future data engineers to understand.  If I need to explain something that's not in the notebook, I add that manually.  If it's just translating my code into a legible "document" I use Genie Code.
+
+##Bonus
+Declarative Automation Bundles set up in GitHub to deploy when code is moved to main.  See databricks.yml under "rearc_demo_test". See GitHub code in "rearc_demo_test/.github/".
+
+Dashboard off of gold in "rearc_demo_test/Dashboards/".
+
+With my Quota issues, didn't feel brave enough to set up a Genie Agent or Databricks App.  Stuck to the safe Dashboard.

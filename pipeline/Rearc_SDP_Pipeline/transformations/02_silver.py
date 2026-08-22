@@ -2,7 +2,7 @@
 Silver layer.
 
 Typed, cleaned, deduplicated, and (for the series dimension) enriched with
-human-readable labels.
+legible labels.
 
 Why @dp.materialized_view (full recompute) instead of streaming here: Bronze
 is where "don't reprocess files we've already ingested" matters, and Auto
@@ -58,7 +58,7 @@ def silver_bls_data():
 
 # --- silver_bls_series ------------------------------------------------------
 # Joins the series dimension against the sector/measure/duration/class/
-# seasonal lookups to build a human-readable label per series -- pr.series on
+# seasonal lookups to build a legible label per series -- pr.series on
 # its own only has opaque numeric codes (sector_code, measure_code,
 # duration_code, class_code...), not descriptive text. Per pr.txt (Section
 # 6/7, the BLS-supplied field dictionary for this survey): measure_code is
@@ -71,7 +71,7 @@ def silver_bls_data():
 
 @dp.materialized_view(
     name=f"{SILVER_SCHEMA}.silver_bls_series",
-    comment="Series metadata enriched with a human-readable label, e.g. "
+    comment="Series metadata enriched with a legible label, e.g. "
     "'Manufacturing: Labor productivity (output per hour), % change from same quarter a year ago, "
     "all persons, Seasonally Adjusted'.",
 )
